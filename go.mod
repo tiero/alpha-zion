@@ -18,6 +18,7 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tdex-network/tdex-protobuf v0.0.0-20210322191920-4609ea418f3a
+	github.com/thanhpk/randstr v1.0.4
 	github.com/vulpemventures/go-elements v0.1.1
 	golang.org/x/net v0.0.0-20210316092652-d523dce5a7f4
 	google.golang.org/grpc v1.32.0

@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitfinexcom/bitfinex-api-go/v2/rest"
 	"github.com/shopspring/decimal"
+	"github.com/tiero/zion/internal/core/domain"
 	"github.com/vulpemventures/go-elements/network"
 )
 
@@ -22,6 +23,12 @@ type TradeService interface {
 		amount uint64,
 		asset string,
 	) (*PriceWithFee, error)
+	TradePropose(
+		ctx context.Context,
+		market Market,
+		tradeType int,
+		swapRequest TradeRequest,
+	) (*TradeAcceptOrFail, error)
 }
 
 type tradeService struct {
@@ -152,6 +159,37 @@ func (t *tradeService) GetMarketPrice(
 		},
 		Amount: amountToGive.BigInt().Uint64(),
 		Asset:  assetToGive,
+	}, nil
+}
+
+func (t *tradeService) TradePropose(
+	ctx context.Context,
+	market Market,
+	tradeType int,
+	swapRequest TradeRequest,
+) (*TradeAcceptOrFail, error) {
+
+	if ok := validateAssetString(market.BaseAsset); !ok {
+		return nil, errors.New("invalid base asset")
+	}
+
+	if ok := validateAssetString(market.QuoteAsset); !ok {
+		return nil, errors.New("invalid quote asset")
+	}
+
+	if tradeType < 0 || tradeType > 1 {
+		return nil, errors.New("invalid quote asset")
+	}
+
+	// TODO get current price for the pair and chek if is ok
+
+	// TODO blind the transaction and sign ziond's inputs with SIGHASH_ALL
+
+	request := domain.SwapRequest(swapRequest)
+	accepted := request.AcceptWithTransaction("fooo bar", nil, nil)
+
+	return &TradeAcceptOrFail{
+		Accept: accepted,
 	}, nil
 }
 

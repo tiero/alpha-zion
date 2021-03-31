@@ -2,7 +2,8 @@
 
 ## build: build for all platforms
 build: 
-	go build -o bin/ziond cmd/ziond/main.go
+	@chmod +x scripts/build
+	@bash scripts/build
 
 ## build-cli: build CLI for all platforms
 build-cli: 

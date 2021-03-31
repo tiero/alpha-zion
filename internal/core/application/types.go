@@ -1,6 +1,9 @@
 package application
 
-import "github.com/shopspring/decimal"
+import (
+	"github.com/shopspring/decimal"
+	"github.com/tiero/zion/internal/core/domain"
+)
 
 type Market struct {
 	BaseAsset  string
@@ -45,4 +48,13 @@ type PriceWithFee struct {
 	Fee
 	Amount uint64
 	Asset  string
+}
+
+type TradeRequest domain.SwapRequest
+
+type TradeAcceptOrFail struct {
+	IsRejected bool
+	Accept     *domain.SwapAccept
+	Fail       *domain.SwapFail
+	ExpiryTime uint64
 }

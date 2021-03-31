@@ -3,8 +3,11 @@ package grpchandler
 import (
 	"context"
 
+	log "github.com/sirupsen/logrus"
 	pb "github.com/tdex-network/tdex-protobuf/generated/go/trade"
 	pbtypes "github.com/tdex-network/tdex-protobuf/generated/go/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/tiero/zion/internal/core/application"
 )
@@ -91,8 +94,8 @@ func (t traderHandler) MarketPrice(
 			QuoteAsset: req.GetMarket().GetQuoteAsset(),
 		},
 		int(req.GetType()),
-		0,
-		"",
+		req.GetAmount(),
+		req.GetAsset(),
 	)
 	if err != nil {
 		return nil, err
@@ -122,6 +125,56 @@ func (t traderHandler) TradePropose(
 	req *pb.TradeProposeRequest,
 	stream pb.Trade_TradeProposeServer,
 ) error {
+	market := application.Market{
+		BaseAsset:  req.GetMarket().GetBaseAsset(),
+		QuoteAsset: req.GetMarket().GetQuoteAsset(),
+	}
+	tradeType := req.GetType()
+	if err := validateTradeType(tradeType); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	swapRequest := req.GetSwapRequest()
+	if err := validateSwapRequest(swapRequest); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	reply, err := t.tradeSvc.TradePropose(
+		stream.Context(),
+		market,
+		int(tradeType),
+		application.TradeRequest{
+			ID:                        swapRequest.GetId(),
+			AmountToBeSent:            swapRequest.GetAmountP(),
+			AmountToReceive:           swapRequest.GetAmountR(),
+			AssetToBeSent:             swapRequest.GetAssetP(),
+			AssetToReceive:            swapRequest.GetAssetR(),
+			PsetBase64:                swapRequest.GetTransaction(),
+			InputBlindingKeyByScript:  swapRequest.GetInputBlindingKey(),
+			OutputBlindingKeyByScript: swapRequest.GetOutputBlindingKey(),
+		},
+	)
+	if err != nil {
+		log.Debug("trying to process trade proposal: ", err)
+		return status.Error(codes.Internal, "cannot serve request please retry")
+	}
+
+	// if the proposal could be rejected for bad pricing
+	if reply.IsRejected {
+		if err := stream.Send(&pb.TradeProposeReply{
+			SwapFail: reply.Fail.ToProtobuf(),
+		}); err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+	}
+
+	// if accepted close the stream right away
+	if err := stream.Send(&pb.TradeProposeReply{
+		SwapAccept:     reply.Accept.ToProtobuf(),
+		ExpiryTimeUnix: reply.ExpiryTime,
+	}); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+
 	return nil
 }
 
