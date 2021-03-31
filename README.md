@@ -4,7 +4,25 @@
 ![markus-spiske-iar-afB0QQw-unsplash](https://user-images.githubusercontent.com/3596602/113153447-65943380-9237-11eb-8a3a-c6767b030d4f.jpg)
 
 Photo by <a href="https://unsplash.com/@markusspiske?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Markus Spiske</a> on <a href="https://unsplash.com/s/photos/matrix?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>
-  
+
+## Overview
+
+Zion is a lightweight server for providing liquidity on [TDEX](https://github.com/TDex-network/whitepaper/blob/main/TDEXWP_V1.md#32-tdex-for-market-makers), the [Liquid Network](https://liquid.net) atomic swaps standard. This is **EXPERIMENTAL** and should only be used with small amounts, professionals should prefer to the enterprise-grade reference Go implementation [tdex-daemon](https://github.com/TDex-network/tdex-daemon).
+
+It exploits an Elements node as wallet under the hood, it only focus on automatically accept TDEX swap requests from traders using rates of a given price feed.
+
+* [x] [Swap protocol](https://github.com/TDex-network/tdex-specs/blob/master/03-swap-protocol.md)
+* [x] [Trade protocol](https://github.com/TDex-network/tdex-specs/blob/master/04-trade-protocol.md)
+* [x] Confidential transactions only
+* [x] Pluggable Market Making
+  * [x] Bitfinex
+  * [ ] The Rock Trading
+  * [ ] BtcTurk 
+* [ ] Automatic SSL certificate
+* [ ] Tor Onion Service
+
+
+## Feature
 
 ## Usage
 
