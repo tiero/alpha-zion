@@ -11,8 +11,8 @@ type Market struct {
 }
 
 type Balance struct {
-	BaseAmount  int64
-	QuoteAmount int64
+	BaseAmount  uint64
+	QuoteAmount uint64
 }
 
 // Fee is the market fee percentage in basis point:
@@ -20,7 +20,9 @@ type Balance struct {
 //	- 1,00% -> 100 bp
 //	- 99,99% -> 9999 bp
 type Fee struct {
-	BasisPoint int64
+	BasisPoint    int64
+	FixedBaseFee  int64
+	FixedQuoteFee int64
 }
 
 type BalanceWithFee struct {
@@ -46,8 +48,9 @@ type Price struct {
 type PriceWithFee struct {
 	Price
 	Fee
-	Amount uint64
-	Asset  string
+	Amount  uint64
+	Asset   string
+	Balance Balance
 }
 
 type TradeRequest domain.SwapRequest
@@ -57,4 +60,22 @@ type TradeAcceptOrFail struct {
 	Accept     *domain.SwapAccept
 	Fail       *domain.SwapFail
 	ExpiryTime uint64
+}
+
+type BalanceInfo struct {
+	TotalBalance       uint64
+	ConfirmedBalance   uint64
+	UnconfirmedBalance uint64
+}
+
+// PriceRequest ...
+type PriceRequest struct {
+	BaseAsset  string `param:"base"`
+	QuoteAsset string `param:"quote"`
+}
+
+// PriceResponse
+type PriceResponse struct {
+	BasePrice  string `json:"basePrice"`
+	QuotePrice string `json:"quotePrice"`
 }
