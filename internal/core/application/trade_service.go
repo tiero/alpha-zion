@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -251,7 +252,7 @@ func (t *tradeService) TradePropose(
 		Network:      t.network,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("complete swap: %w", err)
 	}
 
 	signedTx, err := t.wallet.SignSwap(SignSwapOpts{
@@ -260,7 +261,7 @@ func (t *tradeService) TradePropose(
 		OutputBlindingKeyByScript: request.OutputBlindingKeyByScript,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sign swap: %w", err)
 	}
 
 	accepted := request.AcceptWithTransaction(signedTx, nil, nil)

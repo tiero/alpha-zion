@@ -28,6 +28,7 @@ func main() {
 	// wallet service
 	walletService, err := application.NewWalletService(
 		config.GetString(config.MnemonicKey),
+		config.GetString(config.NativeAssetKey),
 		config.GetString(config.ExplorerEndpointKey),
 		config.GetNetwork(),
 	)

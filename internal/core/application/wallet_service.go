@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -73,10 +74,13 @@ type walletService struct {
 	// pkg/epxlorer compliant service
 	esploraClient explorer.Service
 	network       *network.Network
+
+	nativeAsset string
 }
 
 func NewWalletService(
-	mnemonic string,
+	mnemonic,
+	nativeAsset,
 	explorerEndpoint string,
 	net *network.Network,
 ) (WalletService, error) {
@@ -175,10 +179,10 @@ func NewWalletService(
 		return nil, err
 	}
 
-	return newWalletService(receiveAddr, changeAddr, receivingKey, changeKey, recBlindPrivKey, chaBlindPrivKey, esploraClient), nil
+	return newWalletService(receiveAddr, changeAddr, nativeAsset, receivingKey, changeKey, recBlindPrivKey, chaBlindPrivKey, esploraClient), nil
 }
 
-func newWalletService(receiveAddr, changeAddr string, receivingKey, changeKey, recBlindPrivKey, chaBlindPrivKey *btcec.PrivateKey, esploraClient explorer.Service) *walletService {
+func newWalletService(receiveAddr, changeAddr, nativeAsset string, receivingKey, changeKey, recBlindPrivKey, chaBlindPrivKey *btcec.PrivateKey, esploraClient explorer.Service) *walletService {
 	return &walletService{
 		receivingAddress: receiveAddr,
 		changeAddress:    changeAddr,
@@ -191,6 +195,7 @@ func newWalletService(receiveAddr, changeAddr string, receivingKey, changeKey, r
 			blindingPrivateKey: chaBlindPrivKey,
 		},
 		esploraClient: esploraClient,
+		nativeAsset:   nativeAsset,
 	}
 }
 
@@ -234,6 +239,16 @@ func (w *walletService) CompleSwap(opts CompleteSwapOpts) (string, error) {
 		return "", err
 	}
 
+	for _, v := range unspents {
+		println(v.Asset())
+		println(v.Value())
+		println(v.Script())
+
+		println(v.RangeProof())
+		println(v.Nonce())
+		println(v.SurjectionProof())
+	}
+
 	selectedUnspents, change, err := explorer.SelectUnspents(
 		unspents,
 		opts.InputAmount,
@@ -243,16 +258,43 @@ func (w *walletService) CompleSwap(opts CompleteSwapOpts) (string, error) {
 		return "", err
 	}
 
-	script, _ := address.ToOutputScript(w.receivingAddress)
-	output, _ := newTxOutput(opts.OutputAsset, opts.OutputAmount, script)
+	feeUnspents, feeChange, err := explorer.SelectUnspents(
+		unspents,
+		650,
+		w.nativeAsset,
+	)
+	if err != nil {
+		return "", err
+	}
 
+	script, _ := address.ToOutputScript(w.receivingAddress)
+	output, err := newTxOutput(opts.OutputAsset, opts.OutputAmount, script)
+	if err != nil {
+		return "", err
+	}
+
+	inputsToAdd := []explorer.Utxo{}
+	inputsToAdd = append(inputsToAdd, selectedUnspents...)
+	inputsToAdd = append(inputsToAdd, feeUnspents...)
 	outputsToAdd := []*transaction.TxOutput{output}
 
 	if change > 0 {
 		script, _ := address.ToOutputScript(w.changeAddress)
 
-		changeOutput, _ := newTxOutput(opts.InputAsset, change, script)
+		changeOutput, err := newTxOutput(opts.InputAsset, change, script)
+		if err != nil {
+			return "", err
+		}
 		outputsToAdd = append(outputsToAdd, changeOutput)
+	}
+
+	if feeChange > 0 {
+		feeChangeOutput, err := newTxOutput(w.nativeAsset, feeChange, script)
+		if err != nil {
+			return "", err
+		}
+
+		outputsToAdd = append(outputsToAdd, feeChangeOutput)
 	}
 
 	psetBase64, err := addInsAndOutsToPset(ptx, selectedUnspents, outputsToAdd)
@@ -266,18 +308,27 @@ func (w *walletService) CompleSwap(opts CompleteSwapOpts) (string, error) {
 func (w *walletService) SignSwap(opts SignSwapOpts) (string, error) {
 	ptx, err := pset.NewPsetFromBase64(opts.PsetBase64)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decode pset: %w", err)
 	}
 
-	toBeSignedTx, err := blindTransaction(ptx, opts.InputBlindingKeyByScript, opts.OutputBlindingKeyByScript)
+	receiveScript, _ := address.ToOutputScript(w.receivingAddress)
+	changeScript, _ := address.ToOutputScript(w.receivingAddress)
+
+	// add our own blinding keys
+	inBlindingKeys := opts.InputBlindingKeyByScript
+	inBlindingKeys[hex.EncodeToString(receiveScript)] = w.receivingKeys.blindingPrivateKey.Serialize()
+	inBlindingKeys[hex.EncodeToString(changeScript)] = w.changeKeys.blindingPrivateKey.Serialize()
+
+	outBlindingKeys := opts.OutputBlindingKeyByScript
+	outBlindingKeys[hex.EncodeToString(receiveScript)] = w.receivingKeys.blindingPrivateKey.Serialize()
+	outBlindingKeys[hex.EncodeToString(changeScript)] = w.changeKeys.blindingPrivateKey.Serialize()
+
+	toBeSignedTx, err := blindTransaction(ptx, inBlindingKeys, outBlindingKeys)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("blind: %w", err)
 	}
 
 	for i, in := range toBeSignedTx.Inputs {
-		receiveScript, _ := address.ToOutputScript(w.receivingAddress)
-		changeScript, _ := address.ToOutputScript(w.receivingAddress)
-
 		var privKey *btcec.PrivateKey
 
 		isReceive := bytes.Compare(receiveScript, in.WitnessUtxo.Script) == 0
@@ -297,7 +348,7 @@ func (w *walletService) SignSwap(opts SignSwapOpts) (string, error) {
 
 		err := signInput(toBeSignedTx, i, privKey)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("sign input: %w", err)
 		}
 	}
 
@@ -376,6 +427,14 @@ func blindTransaction(
 	OutputBlindingKeys map[string][]byte,
 ) (*pset.Pset, error) {
 
+	for _, in := range ptx.Inputs {
+		if in.WitnessUtxo == nil {
+			return nil, errors.New("input witness utxo must not be null")
+		}
+	}
+
+	println(len(InputBlindingKeys), len(ptx.Outputs), len(OutputBlindingKeys))
+
 	inKeysLen := len(ptx.Inputs)
 	inBlindingKeys := make([]pset.BlindingDataLike, 0, inKeysLen)
 	for _, in := range ptx.Inputs {
@@ -401,11 +460,11 @@ func blindTransaction(
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new blinder: %w", err)
 	}
 
 	if err := blinder.Blind(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("blind: %w", err)
 	}
 
 	return ptx, nil

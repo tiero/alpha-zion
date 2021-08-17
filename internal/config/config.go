@@ -30,10 +30,12 @@ const (
 	// EpxlorerEndpointKey is the Electrs-compatible Liquid explorer base URL to source blockchain data
 	ExplorerEndpointKey = "EXPLORER_ENDPOINT"
 
-	// BaseAssetKey is the asset hash of the base asset for the single market
+	// BaseAssetKey is the asset hash of the base asset for the pair
 	BaseAssetKey = "BASE_ASSET_ID"
-	// BaseAssetKey is the asset hash of the base asset for the single market
+	// QuoteAssetKey is the asset hash of the quote asset for the pair
 	QuoteAssetKey = "QUOTE_ASSET_ID"
+	// NativeAssetKey is the asset hash used to pay for blockchain fees
+	NativeAssetKey = "NATIVE_ASSET_ID"
 
 	// MnemonicKey are the keys used to hold funds
 	MnemonicKey = "MNEMONIC"
@@ -54,6 +56,7 @@ func init() {
 	vip.SetDefault(PriceEndpointKey, "http://localhost:4040/btc/usd")
 
 	vip.SetDefault(BaseAssetKey, network.Regtest.AssetID)
+	vip.SetDefault(NativeAssetKey, network.Regtest.AssetID)
 
 	vip.SetDefault(MnemonicKey, "still double lounge behind shield idle pistol west dismiss hen august tray")
 
