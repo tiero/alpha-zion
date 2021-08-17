@@ -2,14 +2,19 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"math"
+	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bitfinexcom/bitfinex-api-go/v2/rest"
 	"github.com/shopspring/decimal"
+	"github.com/tdex-network/tdex-daemon/pkg/explorer/esplora"
 	"github.com/tiero/zion/internal/core/domain"
+	"github.com/tiero/zion/internal/core/ports"
 	"github.com/vulpemventures/go-elements/network"
 )
 
@@ -37,82 +42,104 @@ type tradeService struct {
 	// a fee on each trade expressed in basis point charged "on the way in"
 	basisPointFee int64
 	// a fixed fee charged in base asset
-	//baseFixedFee int64
+	baseFixedFee int64
 	// a fixed fee charged in base asset
-	//quoteFixedFee int64
+	quoteFixedFee int64
 	// JSONRPC client for the Elements node
 	client ElementsService
-
 	// rest client to get the avergae price for a ticker via Bitfinex API
 	bitfinexClient *rest.Client
+
+	wallet WalletService
+
+	priceEndpoint string
+
+	baseAsset  string
+	quoteAsset string
+
+	useExplorer bool
 }
 
-func NewTradeService(bitfinexSvc *rest.Client, elementsSvc ElementsService, net *network.Network) (TradeService, error) {
-
+func NewTradeServiceWithElements(bitfinexSvc *rest.Client, elementsSvc ElementsService, net *network.Network) (TradeService, error) {
 	return &tradeService{
 		bitfinexClient: bitfinexSvc,
 		client:         elementsSvc,
-		basisPointFee:  100,
-		network:        net,
+
+		basisPointFee: 100,
+		baseFixedFee:  650,
+		quoteFixedFee: 4000,
+
+		network:     net,
+		useExplorer: false,
+	}, nil
+}
+
+func NewTradeServiceWithExplorer(walletService WalletService, priceEndpoint, baseAsset, quoteAsset string) (TradeService, error) {
+
+	return &tradeService{
+		basisPointFee: 100,
+
+		baseFixedFee:  650,
+		quoteFixedFee: 4000,
+
+		priceEndpoint: priceEndpoint,
+
+		baseAsset:  baseAsset,
+		quoteAsset: quoteAsset,
+
+		wallet: walletService,
+
+		useExplorer: true,
 	}, nil
 }
 
 func (t *tradeService) GetTradableMarkets(ctx context.Context) ([]MarketWithFee, error) {
 
-	wallets, err := t.client.ListWallets()
-	if err != nil {
-		return nil, err
+	markets := []Market{
+		{
+			BaseAsset:  t.baseAsset,
+			QuoteAsset: t.quoteAsset,
+		},
 	}
 
-	mkts := make([]MarketWithFee, 0, len(wallets))
-	for _, walletName := range wallets {
-		if ok := validateAssetString(walletName); ok {
-			mkts = append(mkts, MarketWithFee{
-				Market: Market{
-					BaseAsset:  strings.TrimSpace(t.network.AssetID),
-					QuoteAsset: strings.TrimSpace(walletName),
-				},
-				Fee: Fee{
-					BasisPoint: t.basisPointFee,
-				},
-			})
-		}
+	mkts := make([]MarketWithFee, 0, len(markets))
+	for _, mkt := range markets {
+		mkts = append(mkts, MarketWithFee{
+			Market: Market{
+				BaseAsset:  strings.TrimSpace(mkt.BaseAsset),
+				QuoteAsset: strings.TrimSpace(mkt.QuoteAsset),
+			},
+			Fee: Fee{
+				BasisPoint: t.basisPointFee,
+			},
+		})
 	}
 
 	return mkts, nil
 }
 
 func (t *tradeService) GetMarketBalance(ctx context.Context, market Market) (*BalanceWithFee, error) {
-	if ok := validateAssetString(market.BaseAsset); !ok {
+	if ok := validateAssetString(market.BaseAsset); !ok || t.baseAsset != market.BaseAsset {
 		return nil, errors.New("invalid base asset")
 	}
-	if ok := validateAssetString(market.QuoteAsset); !ok {
+	if ok := validateAssetString(market.QuoteAsset); !ok || t.quoteAsset != market.QuoteAsset {
 		return nil, errors.New("invalid quote asset")
 	}
 
-	balances, err := t.client.GetBalance(strings.TrimSpace(market.QuoteAsset))
+	baseAmount, quoteAmount, err := t.getBalances(market)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, ok := balances["bitcoin"]; !ok {
-		return nil, errors.New("no balance for base asset. Has the market been funded?")
-	}
-
-	if _, ok := balances[market.QuoteAsset]; !ok {
-		return nil, errors.New("no balance for quote asset. Has the market been funded?")
-	}
-
-	baseAmount := balances["bitcoin"] * float64(math.Pow10(8))
-	quoteAmount := balances[market.QuoteAsset] * float64(math.Pow10(8))
-
 	return &BalanceWithFee{
 		Balance: Balance{
-			BaseAmount:  int64(baseAmount),
-			QuoteAmount: int64(quoteAmount),
+			BaseAmount:  baseAmount,
+			QuoteAmount: quoteAmount,
 		},
 		Fee: Fee{
-			BasisPoint: t.basisPointFee,
+			BasisPoint:    t.basisPointFee,
+			FixedBaseFee:  t.baseFixedFee,
+			FixedQuoteFee: t.quoteFixedFee,
 		},
 	}, nil
 
@@ -126,20 +153,38 @@ func (t *tradeService) GetMarketPrice(
 	asset string,
 ) (*PriceWithFee, error) {
 
-	if ok := validateAssetString(market.BaseAsset); !ok {
+	if ok := validateAssetString(market.BaseAsset); !ok || t.baseAsset != market.BaseAsset {
 		return nil, errors.New("invalid base asset")
 	}
-	if ok := validateAssetString(market.QuoteAsset); !ok {
+	if ok := validateAssetString(market.QuoteAsset); !ok || t.quoteAsset != market.QuoteAsset {
 		return nil, errors.New("invalid quote asset")
 	}
 
-	tickerPrice, err := t.bitfinexClient.Tickers.Get("tBTCUSD")
+	client := esplora.NewHTTPClient(5 * time.Second)
+	status, response, err := client.NewHTTPRequest("GET", t.priceEndpoint, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, errors.New("price unavailable")
+	}
+
+	var priceResponse ports.PriceResponse
+	err = json.Unmarshal([]byte(response), &priceResponse)
 	if err != nil {
 		return nil, err
 	}
 
-	basePrice := decimal.NewFromFloat(1 / tickerPrice.LastPrice)
-	quotePrice := decimal.NewFromFloat(tickerPrice.LastPrice)
+	basePrice, err := decimal.NewFromString(priceResponse.BasePrice)
+	if err != nil {
+		return nil, err
+	}
+
+	quotePrice, err := decimal.NewFromString(priceResponse.QuotePrice)
+	if err != nil {
+		return nil, err
+	}
+
 	decimalAmount := decimal.NewFromInt(int64(amount))
 
 	assetToGive := market.QuoteAsset
@@ -149,16 +194,27 @@ func (t *tradeService) GetMarketPrice(
 		amountToGive = decimalAmount.Mul(basePrice)
 	}
 
+	baseAmount, quoteAmount, err := t.getBalances(market)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PriceWithFee{
 		Price: Price{
 			BasePrice:  basePrice,
 			QuotePrice: quotePrice,
 		},
 		Fee: Fee{
-			BasisPoint: t.basisPointFee,
+			BasisPoint:    t.basisPointFee,
+			FixedBaseFee:  t.baseFixedFee,
+			FixedQuoteFee: t.quoteFixedFee,
 		},
 		Amount: amountToGive.BigInt().Uint64(),
 		Asset:  assetToGive,
+		Balance: Balance{
+			BaseAmount:  baseAmount,
+			QuoteAmount: quoteAmount,
+		},
 	}, nil
 }
 
@@ -169,11 +225,10 @@ func (t *tradeService) TradePropose(
 	swapRequest TradeRequest,
 ) (*TradeAcceptOrFail, error) {
 
-	if ok := validateAssetString(market.BaseAsset); !ok {
+	if ok := validateAssetString(market.BaseAsset); !ok || t.baseAsset != market.BaseAsset {
 		return nil, errors.New("invalid base asset")
 	}
-
-	if ok := validateAssetString(market.QuoteAsset); !ok {
+	if ok := validateAssetString(market.QuoteAsset); !ok || t.quoteAsset != market.QuoteAsset {
 		return nil, errors.New("invalid quote asset")
 	}
 
@@ -181,15 +236,39 @@ func (t *tradeService) TradePropose(
 		return nil, errors.New("invalid quote asset")
 	}
 
-	// TODO get current price for the pair and chek if is ok
-
-	// TODO blind the transaction and sign ziond's inputs with SIGHASH_ALL
-
 	request := domain.SwapRequest(swapRequest)
-	accepted := request.AcceptWithTransaction("fooo bar", nil, nil)
+
+	// TODO get current price for the pair and chek if is ok
+	// rejected := request.RejectWithReason()
+	// return &TradeAcceptOrFail{ IsRejected: true, Fail: rejected }, nil
+
+	//blind the transaction and sign inputs with SIGHASH_ALL
+	updatedTx, err := t.wallet.CompleSwap(CompleteSwapOpts{
+		PsetBase64:   request.PsetBase64,
+		InputAmount:  request.AmountToReceive,
+		InputAsset:   request.AssetToReceive,
+		OutputAmount: request.AmountToBeSent,
+		OutputAsset:  request.AssetToBeSent,
+		Network:      t.network,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("complete swap: %w", err)
+	}
+
+	signedTx, err := t.wallet.SignSwap(SignSwapOpts{
+		PsetBase64:                updatedTx,
+		InputBlindingKeyByScript:  request.InputBlindingKeyByScript,
+		OutputBlindingKeyByScript: request.OutputBlindingKeyByScript,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sign swap: %w", err)
+	}
+
+	accepted := request.AcceptWithTransaction(signedTx, nil, nil)
 
 	return &TradeAcceptOrFail{
-		Accept: accepted,
+		Accept:     accepted,
+		ExpiryTime: uint64(time.Now().Add(time.Minute * 2).Unix()),
 	}, nil
 }
 
@@ -206,4 +285,22 @@ func validateAssetString(asset string) bool {
 	}
 
 	return true
+}
+
+func (t *tradeService) getBalances(market Market) (uint64, uint64, error) {
+	balances := make(map[string]BalanceInfo, 0)
+	baseAmount := uint64(0)
+	quoteAmount := uint64(0)
+
+	balances, err := t.wallet.Balances()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if len(balances) > 0 {
+		baseAmount = balances[market.BaseAsset].TotalBalance
+		quoteAmount = balances[market.QuoteAsset].TotalBalance
+	}
+
+	return baseAmount, quoteAmount, nil
 }

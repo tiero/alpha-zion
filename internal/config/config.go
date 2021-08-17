@@ -23,6 +23,22 @@ const (
 	// ElementsRPCEndpointKey is the url for the RPC interface of the Elements
 	// node in the form protocol://user:password@host:port
 	ElementsRPCEndpointKey = "ELEMENTS_RPC_ENDPOINT"
+
+	// PriceEndpointKey is the GET HTTP endpoint to call to fetch price for the given trading pair
+	// example response: { basePrice: "50000", quotePrice: "0.000023"}
+	PriceEndpointKey = "PRICE_ENDPOINT"
+	// EpxlorerEndpointKey is the Electrs-compatible Liquid explorer base URL to source blockchain data
+	ExplorerEndpointKey = "EXPLORER_ENDPOINT"
+
+	// BaseAssetKey is the asset hash of the base asset for the pair
+	BaseAssetKey = "BASE_ASSET_ID"
+	// QuoteAssetKey is the asset hash of the quote asset for the pair
+	QuoteAssetKey = "QUOTE_ASSET_ID"
+	// NativeAssetKey is the asset hash used to pay for blockchain fees
+	NativeAssetKey = "NATIVE_ASSET_ID"
+
+	// MnemonicKey are the keys used to hold funds
+	MnemonicKey = "MNEMONIC"
 )
 
 var vip *viper.Viper
@@ -35,7 +51,14 @@ func init() {
 	vip.SetDefault(LogLevelKey, 5)
 	vip.SetDefault(NetworkKey, "regtest")
 	vip.SetDefault(TraderListeningPortKey, 9945)
-	vip.SetDefault(ElementsRPCEndpointKey, "http://admin1:123@127.0.0.1:7041")
+
+	vip.SetDefault(ExplorerEndpointKey, "http://localhost:3001")
+	vip.SetDefault(PriceEndpointKey, "http://localhost:4040/btc/usd")
+
+	vip.SetDefault(BaseAssetKey, network.Regtest.AssetID)
+	vip.SetDefault(NativeAssetKey, network.Regtest.AssetID)
+
+	vip.SetDefault(MnemonicKey, "still double lounge behind shield idle pistol west dismiss hen august tray")
 
 }
 

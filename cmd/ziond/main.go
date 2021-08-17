@@ -24,7 +24,7 @@ import (
 	pbtrader "github.com/tdex-network/tdex-protobuf/generated/go/trade"
 	grpchandler "github.com/tiero/zion/internal/interface/grpc/handler"
 
-	"github.com/tiero/zion/config"
+	"github.com/tiero/zion/internal/config"
 	"github.com/tiero/zion/internal/core/application"
 
 	"github.com/bitfinexcom/bitfinex-api-go/v2/rest"
@@ -44,7 +44,7 @@ func main() {
 	}
 
 	// trade service
-	tradeService, err := application.NewTradeService(
+	tradeService, err := application.NewTradeServiceWithElements(
 		bitfinexClient,
 		elementService,
 		config.GetNetwork(),
