@@ -39,17 +39,17 @@ type tradeService struct {
 	quoteFixedFee int64
 }
 
-func NewTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint string) (TradeService, error) {
-	return newTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint)
+func NewTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint, nativeAsset string, net *network.Network) (TradeService, error) {
+	return newTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint, nativeAsset, net)
 }
 
-func newTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint string) (*tradeService, error) {
+func newTradeService(privkeyHex, baseAsset, quoteAsset, explorerEndpoint, nativeAsset string, net *network.Network) (*tradeService, error) {
 	esploraClient, err := esplora.NewService(explorerEndpoint, 8000)
 	if err != nil {
 		return nil, err
 	}
 
-	wallet, err := NewWalletService(privkeyHex, network.Regtest.AssetID, &network.Regtest, esploraClient)
+	wallet, err := NewWalletService(privkeyHex, nativeAsset, net, esploraClient)
 	if err != nil {
 		return nil, err
 	}

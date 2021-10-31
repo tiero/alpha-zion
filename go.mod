@@ -16,7 +16,7 @@ require (
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tdex-network/tdex-daemon v0.2.1-0.20210324163246-ed408aba2ec6 // indirect
-	github.com/vulpemventures/go-secp256k1-zkp v1.1.0 // indirect
+	github.com/vulpemventures/go-secp256k1-zkp v1.1.3 // indirect
 	go.uber.org/ratelimit v0.2.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
@@ -34,8 +34,8 @@ require (
 	github.com/tdex-network/tdex-daemon/pkg/explorer v0.0.0-20211026094358-4a0d059903b9 // indirect
 	github.com/thanhpk/randstr v1.0.4
 	github.com/vulpemventures/fastsha256 v0.0.0-20160815193821-637e65642941 // indirect
-	github.com/vulpemventures/go-elements v0.1.1 // indirect
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
+	github.com/vulpemventures/go-elements v0.3.4 // indirect
+	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
 	golang.org/x/text v0.3.5 // indirect

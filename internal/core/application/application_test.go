@@ -31,7 +31,11 @@ var ctx = context.Background()
 
 func TestProposeTrade(t *testing.T) {
 	t.Run("try to Trade buy", func(t *testing.T) {
-		tradeSvc, err := application.NewTradeService(privateKey, base, quote, explorerUrl)
+		tradeSvc, err := application.NewTradeService(
+			privateKey, base, quote, explorerUrl,
+			network.Regtest.AssetID,
+			&network.Regtest,
+		)
 		require.NoError(t, err)
 
 		markets, err := tradeSvc.GetTradableMarkets(ctx)

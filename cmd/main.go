@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/vulpemventures/go-elements/network"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	pbtrader "github.com/tdex-network/tdex-protobuf/generated/go/trade"
@@ -18,10 +19,10 @@ import (
 )
 
 const (
-	base        = "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
-	quote       = "2dcf5a8834645654911964ec3602426fd3b9b4017554d3f9c19403e7fc1411d3"
+	base        = "144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49"
+	quote       = "bd44ed3b4b6eafe98de0726dce1f79ccbd9c457d9ddc1d44389e58f53b9607f8"
 	privateKey  = "bfd87b3d29e1c0846ed293d4bdc7b78d62598a92d18ae69c153558906063df9b"
-	explorerUrl = "http://localhost:3001"
+	explorerUrl = "https://blockstream.info/liquidtestnet/api"
 )
 
 func main() {
@@ -32,6 +33,8 @@ func main() {
 		base,
 		quote,
 		explorerUrl,
+		network.Testnet.AssetID,
+		&network.Testnet,
 	)
 	if err != nil {
 		log.WithError(err).Fatal()
