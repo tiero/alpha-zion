@@ -1,10 +1,12 @@
 package application
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/tdex-network/tdex-daemon/pkg/bufferutil"
 	"github.com/tdex-network/tdex-daemon/pkg/explorer"
 	"github.com/vulpemventures/go-elements/address"
@@ -24,6 +26,10 @@ type CompleteSwapOpts struct {
 	Network      *network.Network
 }
 
+type SignSwapOpts struct {
+	PsetBase64 string
+}
+
 type KeyPair struct {
 	PrivateKey *btcec.PrivateKey
 	PublicKey  *btcec.PublicKey
@@ -33,6 +39,7 @@ type WalletService interface {
 	Address() string
 	Script() []byte
 	CompleSwap(opts CompleteSwapOpts) (string, error)
+	SignSwap(opts SignSwapOpts) (string, error)
 }
 
 type walletService struct {
@@ -156,6 +163,30 @@ func (w *walletService) CompleSwap(opts CompleteSwapOpts) (string, error) {
 	return psetBase64, nil
 }
 
+func (w *walletService) SignSwap(opts SignSwapOpts) (string, error) {
+	ptx, err := pset.NewPsetFromBase64(opts.PsetBase64)
+	if err != nil {
+		return "", fmt.Errorf("decode pset: %w", err)
+	}
+
+	for i, in := range ptx.Inputs {
+		var privKey *btcec.PrivateKey
+
+		isMine := bytes.Compare(w.script, in.WitnessUtxo.Script) == 0
+
+		if !isMine {
+			continue
+		}
+
+		err := signInput(ptx, i, privKey)
+		if err != nil {
+			return "", fmt.Errorf("sign input: %w", err)
+		}
+	}
+
+	return ptx.ToBase64()
+}
+
 func newTxOutput(asset string, value uint64, script []byte) (*transaction.TxOutput, error) {
 	changeAsset, err := bufferutil.AssetHashToBytes(asset)
 	if err != nil {
@@ -192,4 +223,49 @@ func addInsAndOutsToPset(
 	}
 
 	return ptx.ToBase64()
+}
+
+func signInput(ptx *pset.Pset, inIndex int, prvkey *btcec.PrivateKey) error {
+	updater, err := pset.NewUpdater(ptx)
+	if err != nil {
+		return err
+	}
+
+	pay, err := payment.FromScript(ptx.Inputs[inIndex].WitnessUtxo.Script, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	script := pay.Script
+	hashForSignature := ptx.UnsignedTx.HashForWitnessV0(
+		inIndex,
+		script,
+		ptx.Inputs[inIndex].WitnessUtxo.Value,
+		txscript.SigHashAll,
+	)
+
+	signature, err := prvkey.Sign(hashForSignature[:])
+	if err != nil {
+		return err
+	}
+
+	if !signature.Verify(hashForSignature[:], prvkey.PubKey()) {
+		return fmt.Errorf(
+			"signature verification failed for input %d",
+			inIndex,
+		)
+	}
+
+	sigWithSigHashType := append(signature.Serialize(), byte(txscript.SigHashAll))
+	_, err = updater.Sign(
+		inIndex,
+		sigWithSigHashType,
+		prvkey.PubKey().SerializeCompressed(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }

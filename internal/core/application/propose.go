@@ -42,7 +42,14 @@ func (t *tradeService) ProposeTrade(
 		return nil, nil, 0, fmt.Errorf("complete swap: %w", err)
 	}
 
-	accepted := request.AcceptWithTransaction(updatedTx, nil, nil)
+	signedTx, err := t.wallet.SignSwap(SignSwapOpts{
+		PsetBase64: updatedTx,
+	})
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("sign swap: %w", err)
+	}
+
+	accepted := request.AcceptWithTransaction(signedTx, nil, nil)
 
 	return accepted, nil, uint64(time.Now().Add(time.Minute * 2).Unix()), nil
 }
