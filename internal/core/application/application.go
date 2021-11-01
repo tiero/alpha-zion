@@ -19,6 +19,10 @@ type TradeService interface {
 		tradeType int,
 		swapRequest domain.SwapRequest,
 	) (*domain.SwapAccept, *domain.SwapFail, uint64, error)
+	CompleteTrade(
+		ctx context.Context,
+		swapComplete domain.SwapComplete,
+	) (txID string, swapFail *domain.SwapFail, err error)
 }
 
 type tradeService struct {

@@ -159,3 +159,40 @@ func (t traderHandler) ProposeTrade(
 		ExpiryTimeUnix: swapExpiryTime,
 	}, nil
 }
+
+func (t traderHandler) CompleteTrade(
+	ctx context.Context,
+	req *pb.CompleteTradeRequest,
+) (*pb.CompleteTradeReply, error) {
+
+	swapFail := req.GetSwapFail()
+	if swapFail != nil {
+		return &pb.CompleteTradeReply{
+			SwapFail: swapFail,
+		}, nil
+	}
+
+	swapComplete := req.GetSwapComplete()
+	txID, fail, err := t.tradeSvc.CompleteTrade(
+		ctx,
+		domain.SwapComplete{
+			ID:                swapComplete.GetId(),
+			AcceptID:          swapComplete.GetAcceptId(),
+			RawTxOrPsetBase64: swapComplete.GetTransaction(),
+		},
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if fail != nil {
+		return &pb.CompleteTradeReply{
+			SwapFail: fail.ToProtobuf(),
+		}, nil
+	}
+
+	return &pb.CompleteTradeReply{
+		Txid:     txID,
+		SwapFail: nil,
+	}, nil
+}

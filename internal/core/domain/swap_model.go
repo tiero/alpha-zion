@@ -46,6 +46,16 @@ type SwapAccept struct {
 	OutputBlindingKeyByScript map[string][]byte
 }
 
+// SwapComplete is the abstracted representation of a SwapComplete message.
+type SwapComplete struct {
+	// Random unique identifier for the current message
+	ID string
+	// indetifier of the SwapAccept message
+	AcceptID string
+	// Finalized Transaction as raw hex or pset base64
+	RawTxOrPsetBase64 string
+}
+
 type SwapFail struct {
 	// Random unique identifier for the current message
 	ID string
@@ -74,6 +84,26 @@ func (r *SwapRequest) AcceptWithTransaction(transaction string, inputsBlindKeys,
 }
 
 func (r *SwapRequest) RejectWithReason(message string) *SwapFail {
+	randomID := randstr.Hex(8)
+
+	return &SwapFail{
+		ID:             randomID,
+		MessageID:      r.ID,
+		FailureMessage: message,
+	}
+}
+
+func (r *SwapAccept) RejectWithReason(message string) *SwapFail {
+	randomID := randstr.Hex(8)
+
+	return &SwapFail{
+		ID:             randomID,
+		MessageID:      r.ID,
+		FailureMessage: message,
+	}
+}
+
+func (r *SwapComplete) RejectWithReason(message string) *SwapFail {
 	randomID := randstr.Hex(8)
 
 	return &SwapFail{

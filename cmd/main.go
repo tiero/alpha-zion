@@ -33,8 +33,8 @@ func main() {
 		base,
 		quote,
 		explorerUrl,
-		network.Testnet.AssetID,
-		&network.Testnet,
+		network.Regtest.AssetID,
+		&network.Regtest,
 	)
 	if err != nil {
 		log.WithError(err).Fatal()
